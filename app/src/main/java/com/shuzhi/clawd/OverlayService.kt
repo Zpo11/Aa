@@ -254,6 +254,10 @@ class OverlayService : Service() {
             callJs("window.petEngine && window.petEngine.onRelease()")
         }
 
+        // 气泡朝屏幕中间那侧展开，免得长到屏外
+        val half = if ((targetX + w / 2) < sw / 2) "left" else "right"
+        callJs("window.petEngine && window.petEngine.setBubbleSide('$half')")
+
         animateTo(targetX, targetY)
     }
 

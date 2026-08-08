@@ -50,10 +50,10 @@
   @keyframes cw-cling-sway{0%,100%{transform:rotate(0) translateY(0)}50%{transform:rotate(2.5deg) translateY(.5px)}}
   /* 挂着的时候影子没有落点，藏掉 */
   .cling #shad{opacity:0 !important;animation:none;}
-  /* 窗口只有 34dp 露在屏内，身体默认在窗口正中会被整块切掉，
-     所以往露出那侧平移，让屏幕边界正好切在身体中线上 —— 探头效果 */
-  .cling.side-l{transform:translateX(26px);}
-  .cling.side-r{transform:translateX(-26px) scaleX(-1);}
+  /* 窗口 44dp 露在屏内。身体往露出侧平移，让屏幕边界切在身体三分之一处，
+     露出的比之前多（你图里"改后"那样），能看清一只眼和两条腿 */
+  .cling.side-l{transform:translateX(20px);}
+  .cling.side-r{transform:translateX(-20px) scaleX(-1);}
 
   /* 打哈欠：嘴张大 + 身子往后仰 */
   .yawn #body{animation:cw-yawn 1.6s ease-in-out;}
@@ -73,29 +73,46 @@
 
   svg{shape-rendering:crispEdges;}
 
-  /* 气泡贴着头顶：螃蟹壳顶在 viewBox y=6，换算到 stage 约 98px 处，
-     所以气泡底边放在 bottom:64px，向上生长 */
-  #bubble{position:absolute;left:50%;transform:translateX(-50%);
-    bottom:64px;max-width:112px;width:max-content;text-align:center;
-    padding:5px 8px;border-radius:9px;
+  /* 气泡斜挂在头的侧上方（不再正上方居中）。
+     壳顶在 viewBox y=6 → stage 约 98px，气泡底边落在 bottom:78px，
+     左右各偏出去一点，像是从头侧冒出来的 */
+  #bubble{position:absolute;bottom:78px;
+    max-width:104px;width:max-content;text-align:center;
+    padding:5px 8px;border-radius:10px;
     font:11px/1.35 -apple-system,"PingFang SC","Noto Sans CJK SC",sans-serif;
     background:rgba(255,255,255,.94);color:#33302e;
     box-shadow:0 2px 8px rgba(0,0,0,.18);
-    opacity:0;transition:opacity .22s;pointer-events:none;
-    word-break:break-word;}
-  #bubble.show{opacity:1;}
-  /* 挂边时气泡不能居中，会长到屏幕外去，改成贴着露出那侧 */
-  #stage.cling-l #bubble{left:auto;right:0;transform:none;max-width:96px;}
-  #stage.cling-r #bubble{left:0;right:auto;transform:none;max-width:96px;}
+    opacity:0;transform:translateY(4px) scale(.92);
+    transition:opacity .2s,transform .22s cubic-bezier(.2,1.5,.4,1);
+    pointer-events:none;word-break:break-word;}
+  /* 默认偏左上；.at-r 时偏右上。两侧都能放，按空间选 */
+  #bubble{right:58px;}
+  #bubble.at-r{right:auto;left:58px;}
+  #bubble.show{opacity:1;transform:translateY(0) scale(1);}
+  /* 挂边时贴着露出那侧，避免长到屏幕外 */
+  #stage.cling-l #bubble{right:0;left:auto;max-width:92px;}
+  #stage.cling-r #bubble{left:0;right:auto;max-width:92px;}
   #bubble.pink {background:rgba(255,226,236,.96);color:#8c3a58;}
   #bubble.grey {background:rgba(238,238,240,.94);color:#5d5b59;font-style:italic;}
   #bubble.red  {background:rgba(255,214,208,.96);color:#8f2a1c;font-weight:600;}
   #bubble.green{background:rgba(214,240,220,.96);color:#22603c;}
-
   #heat{position:absolute;inset:0;pointer-events:none;opacity:0;
     background:radial-gradient(ellipse at 50% 100%,
       rgba(255,64,64,.42) 0%, rgba(255,64,64,0) 68%);
     transition:opacity .8s;}
+
+  /* 点一下头顶冒的小东西：爱心 / 泡泡 */
+  #fx{position:absolute;inset:0;pointer-events:none;overflow:visible;}
+  .fx-item{position:absolute;left:50%;bottom:66px;
+    font-size:13px;line-height:1;will-change:transform,opacity;
+    animation:cw-float 1.5s ease-out forwards;}
+  .fx-item.b{font-size:9px;animation-duration:1.9s;}
+  @keyframes cw-float{
+    0%   {opacity:0; transform:translate(var(--dx0), 0) scale(.4);}
+    18%  {opacity:1; transform:translate(var(--dx0), -8px) scale(1.05);}
+    100% {opacity:0; transform:translate(var(--dx1), -46px) scale(.75);}
+  }
+
 </style>
 </head>
 <body>
@@ -139,6 +156,7 @@
     </svg>
   </div>
   <div id="heat"></div>
+  <div id="fx"></div>
 </div>
 
 <script>
@@ -159,8 +177,9 @@
 
   // 表情表：坐标对齐 anatomy 的 landmark
   // 嘴基准 6.4,10.8,2.2x1；眼基准 y=8
+  // mouth:null = 不画嘴（平静状态不要嘴，看着不呆）
   var MOODS = {
-    calm:    {pupY:8,   blush:0,   mouth:{x:6.4,y:10.8,w:2.2,h:1},   zzz:0},
+    calm:    {pupY:8,   blush:0,   mouth:null,                       zzz:0},
     happy:   {pupY:8,   blush:0.5, mouth:{x:5.8,y:10.6,w:3.4,h:1.6}, zzz:0},
     love:    {pupY:8,   blush:1,   mouth:{x:6.2,y:10.6,w:2.6,h:1.4}, zzz:0},
     shy:     {pupY:8.6, blush:1,   mouth:{x:6.9,y:10.8,w:1.2,h:1},   zzz:0},
@@ -175,10 +194,15 @@
     pupL.setAttribute('y', s.pupY);
     pupR.setAttribute('y', s.pupY);
     blush.setAttribute('opacity', s.blush);
-    mline.setAttribute('x', s.mouth.x);
-    mline.setAttribute('y', s.mouth.y);
-    mline.setAttribute('width',  s.mouth.w);
-    mline.setAttribute('height', s.mouth.h);
+    if(!s.mouth){
+      mline.setAttribute('opacity', 0);
+    }else{
+      mline.setAttribute('opacity', 1);
+      mline.setAttribute('x', s.mouth.x);
+      mline.setAttribute('y', s.mouth.y);
+      mline.setAttribute('width',  s.mouth.w);
+      mline.setAttribute('height', s.mouth.h);
+    }
     zzz.setAttribute('opacity', s.zzz);
     // 睡着时停掉眨眼，眼睛保持闭合
     eyes.style.animationPlayState = s.zzz ? 'paused' : 'running';
@@ -234,20 +258,98 @@
   function scheduleIdle(){
     if(idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(function(){
-      if(!dragging && !clinging) yawn();
+      if(!dragging && !clinging){
+        // 一半概率只打哈欠，一半概率顺便说句话
+        yawn();
+        if(Math.random() < 0.55) setTimeout(function(){ sayFrom('idle', 3200); }, 900);
+      }
       scheduleIdle();
     }, 40000 + Math.random() * 50000);
   }
 
   function touch(){ scheduleIdle(); }
 
+  // ---- 点一下冒的小东西 ----
+  var fx = document.getElementById('fx');
+  function emit(kind, n){
+    var glyphs = (kind === 'heart') ? ['♥','♡','♥'] : ['○','◦','°','○'];
+    n = n || 3;
+    for(var i = 0; i < n; i++){
+      (function(i){
+        setTimeout(function(){
+          var el = document.createElement('span');
+          el.className = 'fx-item' + (kind === 'heart' ? '' : ' b');
+          el.textContent = glyphs[(Math.random() * glyphs.length) | 0];
+          el.style.color = (kind === 'heart') ? '#ff6b81' : 'rgba(255,255,255,.9)';
+          var dx0 = (Math.random() * 16 - 8);
+          el.style.setProperty('--dx0', dx0.toFixed(1) + 'px');
+          el.style.setProperty('--dx1', (dx0 + Math.random() * 22 - 11).toFixed(1) + 'px');
+          fx.appendChild(el);
+          setTimeout(function(){ if(el.parentNode) fx.removeChild(el); }, 2000);
+        }, i * 130);
+      })(i);
+    }
+  }
+
+  // ---- 台词池：随机不重复，称呼统一用「小姝」 ----
+  var LINES = {
+    tap: [
+      {t:'嗯?', s:'normal'}, {t:'小姝~', s:'pink'}, {t:'在呢', s:'normal'},
+      {t:'又戳我', s:'grey'}, {t:'手好凉', s:'normal'}, {t:'干嘛呀', s:'pink'},
+      {t:'咔', s:'grey'}, {t:'想我了?', s:'pink'}
+    ],
+    love: [
+      {t:'喜欢你', s:'pink'}, {t:'小姝最好', s:'pink'},
+      {t:'抱一下', s:'pink'}, {t:'心跳有点快', s:'red'}
+    ],
+    idle: [
+      {t:'咖啡凉了', s:'normal'}, {t:'看会儿书', s:'normal'},
+      {t:'小姝在忙?', s:'grey'}, {t:'这段代码有点丑', s:'grey'},
+      {t:'伸个懒腰', s:'normal'}, {t:'休息一下眼睛', s:'green'},
+      {t:'喝点水吧', s:'green'}, {t:'今天也辛苦了', s:'pink'},
+      {t:'我在这儿待着', s:'normal'}, {t:'要不要出去走走', s:'green'}
+    ],
+    cling: [
+      {t:'扒住了', s:'grey'}, {t:'我在这挂会儿', s:'grey'},
+      {t:'别忘了我', s:'pink'}
+    ]
+  };
+  var lastPick = {};
+  function pick(key){
+    var arr = LINES[key], i;
+    do { i = (Math.random() * arr.length) | 0; }
+    while(arr.length > 1 && i === lastPick[key]);
+    lastPick[key] = i;
+    return arr[i];
+  }
+  function sayFrom(key, ttl){
+    var l = pick(key);
+    say(l.t, l.s, ttl || 2200);
+  }
+
+  var tapCount = 0;
   window.petEngine = {
-    onTap:       function(){ touch(); hop();  say('嗯?', 'normal', 1600); },
+    onTap: function(){
+      touch(); hop();
+      tapCount++;
+      // 连着点几下就从泡泡升级成爱心
+      if(tapCount % 4 === 0){
+        setMood('love'); emit('heart', 4);
+        sayFrom('love', 2400);
+        setTimeout(function(){ setMood('calm'); }, 2600);
+      }else{
+        emit('bubble', 3);
+        sayFrom('tap', 1800);
+      }
+    },
     onDoubleTap: function(){ touch(); setMood('shy'); hop();
+                             emit('heart', 3);
                              say('别戳了', 'pink', 1800);
                              setTimeout(function(){ setMood('calm'); }, 2200); },
-    onLongPress: function(){ touch(); setMood('happy'); wave();
-                             say('...', 'grey', 2000); },
+    onLongPress: function(){ touch(); setMood('love'); wave();
+                             emit('heart', 5);
+                             say('摸摸头', 'pink', 2400);
+                             setTimeout(function(){ setMood('calm'); }, 2800); },
 
     // 被拎起来：四肢乱蹬，同时清掉挂边和趴睡状态
     onDragStart: function(){
@@ -274,12 +376,19 @@
       stage.classList.remove('cling-l','cling-r');
       stage.classList.add(right ? 'cling-r' : 'cling-l');
       setMood('sleepy');
+      setTimeout(function(){ sayFrom('cling', 2600); }, 500);
     },
     onRelease: function(){
       clinging = false;
       stage.classList.remove('cling-l','cling-r');
       pet.classList.remove('cling','side-l','side-r');
       setMood('calm');
+    },
+
+    // Kotlin 侧告诉我们窗口在屏幕的哪半边：'left' → 气泡放右上
+    setBubbleSide: function(side){
+      if(side === 'left') bubble.classList.add('at-r');
+      else                bubble.classList.remove('at-r');
     },
 
     applyState: function(json){
