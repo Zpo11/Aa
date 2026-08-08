@@ -35,7 +35,10 @@
 
   svg{shape-rendering:crispEdges;}
 
-  #bubble{position:absolute;left:0;top:0;max-width:116px;
+  /* 气泡贴着头顶：螃蟹壳顶在 viewBox y=6，换算到 stage 约 98px 处，
+     所以气泡底边放在 bottom:64px，向上生长 */
+  #bubble{position:absolute;left:50%;transform:translateX(-50%);
+    bottom:64px;max-width:112px;width:max-content;text-align:center;
     padding:5px 8px;border-radius:9px;
     font:11px/1.35 -apple-system,"PingFang SC","Noto Sans CJK SC",sans-serif;
     background:rgba(255,255,255,.94);color:#33302e;
