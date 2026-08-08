@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  html,body{margin:0;padding:0;background:transparent;overflow:hidden;
+    -webkit-user-select:none;user-select:none;}
+  #stage{position:relative;width:180px;height:240px;}
+  /* 用 transform 做动画，避免触发重排 */
+  #pet{position:absolute;left:0;bottom:40px;width:180px;height:180px;
+    transform-origin:50% 90%;
+    animation:breathe 3.2s ease-in-out infinite;}
+  @keyframes breathe{
+    0%,100%{transform:translateY(0) scale(1,1);}
+    50%    {transform:translateY(-3px) scale(1.02,0.98);}
+  }
+  .blink{animation:blink .18s steps(1) 2;}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+  .hop{animation:hop .5s ease-out;}
+  @keyframes hop{
+    0%{transform:translateY(0)}
+    40%{transform:translateY(-22px) rotate(-4deg)}
+    100%{transform:translateY(0)}
+  }
+  /* 像素风：关掉插值 */
+  svg{image-rendering:pixelated;shape-rendering:crispEdges;}
+
+  #bubble{position:absolute;left:0;top:0;max-width:176px;
+    padding:6px 9px;border-radius:10px;
+    font:12px/1.35 -apple-system,"PingFang SC","Noto Sans CJK SC",sans-serif;
+    background:rgba(255,255,255,.94);color:#33302e;
+    box-shadow:0 2px 8px rgba(0,0,0,.18);
+    opacity:0;transition:opacity .22s;pointer-events:none;
+    word-break:break-word;}
+  #bubble.show{opacity:1;}
+  #bubble.pink {background:rgba(255,226,236,.96);color:#8c3a58;}
+  #bubble.grey {background:rgba(238,238,240,.94);color:#5d5b59;font-style:italic;}
+  #bubble.red  {background:rgba(255,214,208,.96);color:#8f2a1c;font-weight:600;}
+  #bubble.green{background:rgba(214,240,220,.96);color:#22603c;}
+
+  /* heat 叠加：红色渐变，从底部往上 */
+  #heat{position:absolute;inset:0;pointer-events:none;opacity:0;
+    background:radial-gradient(ellipse at 50% 100%,
+      rgba(255,64,64,.42) 0%, rgba(255,64,64,0) 68%);
+    transition:opacity .8s;}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="bubble"></div>
+  <div id="pet">
+    <svg viewBox="0 0 36 36" width="180" height="180">
+      <!-- 像素小螃蟹：一格 = 1 单位 -->
+      <g id="body">
+        <!-- 壳 -->
+        <rect x="9"  y="14" width="18" height="9"  fill="#E2593C"/>
+        <rect x="7"  y="16" width="2"  height="6"  fill="#E2593C"/>
+        <rect x="27" y="16" width="2"  height="6"  fill="#E2593C"/>
+        <!-- 壳高光 -->
+        <rect x="11" y="15" width="6"  height="2"  fill="#F0836B"/>
+        <!-- 壳底阴影 -->
+        <rect x="9"  y="21" width="18" height="2"  fill="#B8422A"/>
+        <!-- 眼柄 -->
+        <rect x="13" y="10" width="2"  height="4"  fill="#E2593C"/>
+        <rect x="21" y="10" width="2"  height="4"  fill="#E2593C"/>
+        <!-- 眼白 -->
+        <rect x="12" y="7"  width="4"  height="4"  fill="#FFFFFF"/>
+        <rect x="20" y="7"  width="4"  height="4"  fill="#FFFFFF"/>
+      </g>
+      <!-- 瞳孔单独一组，方便换表情 -->
+      <g id="eyes">
+        <rect id="pupL" x="13" y="8" width="2" height="2" fill="#2B2B2B"/>
+        <rect id="pupR" x="21" y="8" width="2" height="2" fill="#2B2B2B"/>
+      </g>
+      <!-- 腮红，害羞时显示 -->
+      <g id="blush" opacity="0">
+        <rect x="10" y="18" width="3" height="2" fill="#FF8FA0"/>
+        <rect x="23" y="18" width="3" height="2" fill="#FF8FA0"/>
+      </g>
+      <!-- 嘴 -->
+      <g id="mouth">
+        <rect id="mline" x="16" y="19" width="4" height="1" fill="#8E3020"/>
+      </g>
+      <!-- 钳子 -->
+      <g id="clawL">
+        <rect x="3"  y="17" width="4" height="3" fill="#E2593C"/>
+        <rect x="2"  y="15" width="3" height="2" fill="#E2593C"/>
+        <rect x="2"  y="20" width="3" height="2" fill="#E2593C"/>
+      </g>
+      <g id="clawR">
+        <rect x="29" y="17" width="4" height="3" fill="#E2593C"/>
+        <rect x="31" y="15" width="3" height="2" fill="#E2593C"/>
+        <rect x="31" y="20" width="3" height="2" fill="#E2593C"/>
+      </g>
+      <!-- 腿 -->
+      <g id="legs" fill="#C44A30">
+        <rect x="11" y="23" width="2" height="3"/>
+        <rect x="15" y="23" width="2" height="3"/>
+        <rect x="19" y="23" width="2" height="3"/>
+        <rect x="23" y="23" width="2" height="3"/>
+      </g>
+    </svg>
+  </div>
+  <div id="heat"></div>
+</div>
+
+<script>
+(function(){
+  var pet    = document.getElementById('pet');
+  var eyes   = document.getElementById('eyes');
+  var pupL   = document.getElementById('pupL');
+  var pupR   = document.getElementById('pupR');
+  var blush  = document.getElementById('blush');
+  var mline  = document.getElementById('mline');
+  var bubble = document.getElementById('bubble');
+  var heat   = document.getElementById('heat');
+  var bubbleTimer = null;
+
+  // 表情表：mood -> 瞳孔/腮红/嘴形
+  var MOODS = {
+    calm:    {pupY:8,  blush:0,   mouth:{x:16,y:19,w:4,h:1}},
+    happy:   {pupY:8,  blush:0.5, mouth:{x:15,y:19,w:6,h:2}},
+    shy:     {pupY:9,  blush:1,   mouth:{x:17,y:19,w:2,h:1}},
+    jealous: {pupY:7,  blush:0,   mouth:{x:15,y:20,w:6,h:1}},
+    sleepy:  {pupY:9,  blush:0,   mouth:{x:17,y:19,w:2,h:2}},
+    angry:   {pupY:7,  blush:0,   mouth:{x:14,y:20,w:8,h:1}}
+  };
+
+  function setMood(m){
+    var s = MOODS[m] || MOODS.calm;
+    pupL.setAttribute('y', s.pupY);
+    pupR.setAttribute('y', s.pupY);
+    blush.setAttribute('opacity', s.blush);
+    mline.setAttribute('x', s.mouth.x);
+    mline.setAttribute('y', s.mouth.y);
+    mline.setAttribute('width',  s.mouth.w);
+    mline.setAttribute('height', s.mouth.h);
+  }
+
+  function setHeat(v){
+    var t = Math.max(0, Math.min(100, v|0)) / 100;
+    heat.style.opacity = t;
+  }
+
+  function say(text, style, ttl){
+    if(!text){ bubble.classList.remove('show'); return; }
+    bubble.textContent = text;
+    bubble.className = 'show ' + (style || 'normal');
+    if(bubbleTimer) clearTimeout(bubbleTimer);
+    if(ttl && ttl > 0){
+      bubbleTimer = setTimeout(function(){
+        bubble.classList.remove('show');
+      }, ttl);
+    }
+  }
+
+  function blink(){
+    eyes.classList.remove('blink');
+    void eyes.offsetWidth;      // 强制重排以重启动画
+    eyes.classList.add('blink');
+  }
+
+  function hop(){
+    pet.classList.remove('hop');
+    void pet.offsetWidth;
+    pet.classList.add('hop');
+    // hop 结束后恢复呼吸动画
+    setTimeout(function(){ pet.classList.remove('hop'); }, 520);
+  }
+
+  // 随机眨眼，3 到 7 秒一次
+  (function loopBlink(){
+    setTimeout(function(){ blink(); loopBlink(); },
+      3000 + Math.random() * 4000);
+  })();
+
+  // 暴露给 Kotlin 侧调用
+  window.petEngine = {
+    onTap:       function(){ hop();  say('嗯?', 'normal', 1600); },
+    onDoubleTap: function(){ setMood('shy'); hop();
+                             say('别戳了', 'pink', 1800);
+                             setTimeout(function(){ setMood('calm'); }, 2200); },
+    onLongPress: function(){ setMood('happy');
+                             say('...', 'grey', 2000); },
+    applyState: function(json){
+      try{
+        var s = (typeof json === 'string') ? JSON.parse(json) : json;
+        if(s.mood) setMood(s.mood);
+        if(typeof s.heat === 'number') setHeat(s.heat);
+        if(s.bubble && s.bubble.text){
+          say(s.bubble.text, s.bubble.style, s.bubble.ttl_ms);
+        }
+        if(s.action === 'wave' || s.action === 'wake') hop();
+      }catch(e){ /* 状态文件写坏了就忽略这一轮 */ }
+    }
+  };
+
+  setMood('calm');
+})();
+</script>
+</body>
+</html>
