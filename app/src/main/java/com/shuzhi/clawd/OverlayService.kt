@@ -53,8 +53,13 @@ class OverlayService : Service() {
     private var moved = false
     private var pendingTap: Runnable? = null
 
+    /** 只听 127.0.0.1 的本地通信服务 */
+    private val server = LocalServer()
+
     override fun onCreate() {
         super.onCreate()
+        StateBridge.init(this)
+        server.start()
         createChannel()
         startForeground(NOTIFY_ID, buildNotification("在你桌面上待着"))
         setupOverlay()
@@ -243,6 +248,7 @@ class OverlayService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        server.stop()
         main.removeCallbacksAndMessages(null)
         webView?.let {
             runCatching { windowManager.removeView(it) }

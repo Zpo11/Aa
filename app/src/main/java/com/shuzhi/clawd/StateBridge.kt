@@ -1,39 +1,53 @@
 package com.shuzhi.clawd
 
-import android.os.Environment
+import android.content.Context
 import java.io.File
 
 /**
- * 本地文件通信桥。
- * 读：state.json —— AI 写，桌宠消费。
- * 写：events.jsonl —— 桌宠写，AI 下次说话时读。
- * 没有云端，没有网络依赖。
+ * 本地通信桥。
+ *
+ * 状态不再走共享存储（那需要「所有文件访问」权限，部分 ROM 直接锁死），
+ * 改为：
+ *   - 内存中的 currentState —— HTTP 服务写入，悬浮窗消费
+ *   - 应用私有目录的 events.jsonl —— 桌宠写，外部通过 HTTP 取
+ *
+ * 私有目录不需要任何运行时权限。
  */
 object StateBridge {
 
-    private val baseDir: File by lazy {
-        File(Environment.getExternalStorageDirectory(), "Operit/clawd").apply { mkdirs() }
+    private var appContext: Context? = null
+
+    fun init(ctx: Context) {
+        if (appContext == null) appContext = ctx.applicationContext
     }
 
-    private val stateFile: File get() = File(baseDir, "state.json")
-    private val eventFile: File get() = File(baseDir, "events.jsonl")
+    private val eventFile: File?
+        get() = appContext?.let { File(it.filesDir, "events.jsonl") }
 
-    /** 上次读到的内容，用来跳过没变化的轮询 */
-    private var lastRaw: String? = null
+    /** 最新状态，由 HTTP PUT /state 写入 */
+    @Volatile
+    private var currentState: String? = null
+
+    /** 上次交给 WebView 的内容，用来跳过没变化的轮询 */
+    private var lastDelivered: String? = null
+
+    /** 外部写入新状态。返回 false 表示内容为空被忽略。 */
+    fun writeState(raw: String): Boolean {
+        if (raw.isBlank()) return false
+        currentState = raw
+        return true
+    }
+
+    /** 当前状态原文，供 HTTP GET /state 回显 */
+    fun peekState(): String? = currentState
 
     /**
-     * 读状态文件。没变化或读不到时返回 null，避免无意义地打扰 WebView。
+     * 状态有变化时返回新内容，否则返回 null，避免无意义地打扰 WebView。
      */
     fun readStateIfChanged(): String? {
-        val f = stateFile
-        if (!f.exists() || !f.canRead()) return null
-        val raw = try {
-            f.readText()
-        } catch (e: Exception) {
-            return null
-        }
-        if (raw.isBlank() || raw == lastRaw) return null
-        lastRaw = raw
+        val raw = currentState ?: return null
+        if (raw == lastDelivered) return null
+        lastDelivered = raw
         return raw
     }
 
@@ -42,6 +56,7 @@ object StateBridge {
      * 单行 JSON，追加写，不用担心并发覆盖。
      */
     fun appendEvent(type: String, data: Map<String, Any?> = emptyMap()) {
+        val f = eventFile ?: return
         val sb = StringBuilder()
         sb.append("{\"ts\":").append(System.currentTimeMillis())
         sb.append(",\"type\":\"").append(escape(type)).append('"')
@@ -59,18 +74,37 @@ object StateBridge {
             sb.append('}')
         }
         sb.append("}\n")
-
         try {
-            eventFile.appendText(sb.toString())
+            f.appendText(sb.toString())
             trimIfTooLarge()
         } catch (e: Exception) {
             // 写不进去就算了，桌宠不能因为记日志而崩
         }
     }
 
+    /** 读出全部事件文本，供 HTTP GET /events */
+    fun dumpEvents(): String {
+        val f = eventFile ?: return ""
+        return try {
+            if (f.exists()) f.readText() else ""
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    /** 读完后清空，避免重复消费 */
+    fun clearEvents() {
+        val f = eventFile ?: return
+        try {
+            if (f.exists()) f.writeText("")
+        } catch (e: Exception) {
+            // 忽略
+        }
+    }
+
     /** 事件文件超过 256KB 时只留最后 300 行，防止无限膨胀 */
     private fun trimIfTooLarge() {
-        val f = eventFile
+        val f = eventFile ?: return
         if (!f.exists() || f.length() < 256 * 1024) return
         try {
             val kept = f.readLines().takeLast(300)

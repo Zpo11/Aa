@@ -4,7 +4,6 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
 import android.provider.Settings
 import android.view.Gravity
 import android.view.ViewGroup
@@ -38,7 +37,6 @@ class MainActivity : AppCompatActivity() {
         root.addView(statusView)
 
         root.addView(button("授予悬浮窗权限") { requestOverlay() })
-        root.addView(button("授予文件访问权限") { requestStorage() })
         root.addView(button("放它出来") { startPet() })
         root.addView(button("收起来") { stopPet() })
 
@@ -60,21 +58,13 @@ class MainActivity : AppCompatActivity() {
         setOnClickListener { onClick() }
     }
 
-    private fun refreshStatus() {
+private fun refreshStatus() {
         val overlay = if (canOverlay()) "已授权" else "未授权"
-        val storage = if (canReadFiles()) "已授权" else "未授权"
-        statusView.text = "悬浮窗：$overlay\n文件访问：$storage\n\n" +
-            "状态文件：/sdcard/Operit/clawd/state.json"
+        statusView.text = "悬浮窗：$overlay\n\n" +
+            "通信：http://127.0.0.1:8791"
     }
-
     private fun canOverlay(): Boolean = Settings.canDrawOverlays(this)
 
-    private fun canReadFiles(): Boolean =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Environment.isExternalStorageManager()
-        } else {
-            true
-        }
 
     private fun requestOverlay() {
         if (canOverlay()) {
@@ -89,25 +79,6 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun requestStorage() {
-        if (canReadFiles()) {
-            toast("已经有了")
-            return
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            runCatching {
-                startActivity(
-                    Intent(
-                        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                        Uri.parse("package:$packageName")
-                    )
-                )
-            }.onFailure {
-                startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-            }
-        }
-    }
-
     private fun askNotificationIfNeeded() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
@@ -117,10 +88,6 @@ class MainActivity : AppCompatActivity() {
     private fun startPet() {
         if (!canOverlay()) {
             toast("先给悬浮窗权限")
-            return
-        }
-        if (!canReadFiles()) {
-            toast("先给文件访问权限，不然它读不到状态")
             return
         }
         startForegroundService(Intent(this, OverlayService::class.java))
