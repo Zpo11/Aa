@@ -52,8 +52,8 @@
   .cling #shad{opacity:0 !important;animation:none;}
   /* 窗口 44dp 露在屏内。身体往露出侧平移，让屏幕边界切在身体三分之一处，
      露出的比之前多（你图里"改后"那样），能看清一只眼和两条腿 */
-  .cling.side-l{transform:translateX(20px);}
-  .cling.side-r{transform:translateX(-20px) scaleX(-1);}
+  .cling.side-l{transform:translateX(20px) rotate(-18deg); transform-origin:right bottom;}
+  .cling.side-r{transform:translateX(-20px) rotate(18deg) scaleX(-1); transform-origin:left bottom;}
 
   /* 打哈欠：嘴张大 + 身子往后仰 */
   .yawn #body{animation:cw-yawn 1.6s ease-in-out;}
@@ -70,6 +70,20 @@
     100%{transform:translateY(2px) scaleY(.82) scaleX(1.08)}
   }
   .flop #shad{transform:scaleX(1.15);}
+
+  /* === 场景姿态 === */
+  .scene-laptop #body{transform:rotate(-5deg) translateY(1px);}
+  .scene-laptop #prop-laptop{opacity:1;}
+  .scene-music #body{animation:cw-bop 1.2s ease-in-out infinite;}
+  .scene-music #prop-music{opacity:1;}
+  @keyframes cw-bop{0%,100%{transform:rotate(0)}50%{transform:rotate(3deg)}}
+  .scene-book #body{transform:translateY(1px);}
+  .scene-book #prop-book{opacity:1;}
+  .scene-sleep #body{animation:cw-flop .9s ease-out forwards;}
+  .scene-sleep #prop-blanket{opacity:1;}
+  .scene-sleep #shad{transform:scaleX(1.15);}
+  /* 场景时隐藏不属于当前场景的道具 */
+  #props{pointer-events:none;}
 
   svg{shape-rendering:crispEdges;}
 
@@ -152,6 +166,31 @@
       <!-- 睡觉时的 ZZZ -->
       <g id="zzz" opacity="0" fill="#fff" font-size="4" font-family="sans-serif">
         <text x="14" y="4">z</text><text x="17" y="0">z</text>
+      </g>
+      <!-- 场景道具：默认全隐藏，由 JS 按姿态显示 -->
+      <g id="props" opacity="0">
+        <!-- 笔记本电脑 -->
+        <g id="prop-laptop">
+          <rect x="0" y="12" width="15" height="1" fill="#555"/>
+          <rect x="2" y="5" width="11" height="7" rx=".5" fill="#333" stroke="#555" stroke-width=".3"/>
+          <rect x="3" y="6" width="9" height="5" fill="#4fc3f7"/>
+        </g>
+        <!-- 耳机 -->
+        <g id="prop-music">
+          <path d="M3,5 Q3,2 7.5,2 Q12,2 12,5" fill="none" stroke="#444" stroke-width=".8"/>
+          <rect x="2" y="5" width="2" height="2.5" rx=".6" fill="#666"/>
+          <rect x="11" y="5" width="2" height="2.5" rx=".6" fill="#666"/>
+        </g>
+        <!-- 书 -->
+        <g id="prop-book">
+          <rect x="1" y="10" width="6" height="5" fill="#8d6e63" rx=".3"/>
+          <rect x="1.5" y="10.5" width="5" height="4" fill="#fff9c4"/>
+          <line x1="4" y1="10" x2="4" y2="15" stroke="#5d4037" stroke-width=".3"/>
+        </g>
+        <!-- 毯子（睡觉用） -->
+        <g id="prop-blanket">
+          <rect x="0" y="9" width="15" height="7" rx="1" fill="#ce93d8" opacity=".7"/>
+        </g>
       </g>
     </svg>
   </div>
@@ -253,15 +292,39 @@
     else   pet.classList.remove('flop');
   }
 
+  // ---- 场景姿态系统 ----
+  var SCENES = ['laptop','music','book']; // sleep 由状态触发，不随机
+  var currentScene = '';
+  var sceneTimer = null;
+  function setScene(name){
+    pet.classList.remove('scene-laptop','scene-music','scene-book','scene-sleep');
+    currentScene = name || '';
+    if(name) pet.classList.add('scene-' + name);
+  }
+  function clearScene(){
+    if(sceneTimer) clearTimeout(sceneTimer);
+    sceneTimer = null;
+    setScene('');
+  }
+
   // 空闲久了自己打个哈欠，随机间隔避免看着像定时器
   var idleTimer = null;
   function scheduleIdle(){
     if(idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(function(){
       if(!dragging && !clinging){
-        // 一半概率只打哈欠，一半概率顺便说句话
-        yawn();
-        if(Math.random() < 0.55) setTimeout(function(){ sayFrom('idle', 3200); }, 900);
+        var r = Math.random();
+        if(r < 0.3 && !currentScene){
+          // 30% 概率进入一个场景姿态
+          var sc = SCENES[(Math.random() * SCENES.length) | 0];
+          setScene(sc);
+          // 持续 15-30 秒后自动退出
+          sceneTimer = setTimeout(function(){ clearScene(); }, 15000 + Math.random() * 15000);
+        }else if(!currentScene){
+          // 正常打哈欠
+          yawn();
+          if(Math.random() < 0.55) setTimeout(function(){ sayFrom('idle', 3200); }, 900);
+        }
       }
       scheduleIdle();
     }, 40000 + Math.random() * 50000);
@@ -332,14 +395,24 @@
     onTap: function(){
       touch(); hop();
       tapCount++;
-      // 连着点几下就从泡泡升级成爱心
-      if(tapCount % 4 === 0){
+      // 随机反应：不是每次都说话
+      var roll = Math.random();
+      if(tapCount % 5 === 0){
+        // 每5下给一个大反应：爱心+台词
         setMood('love'); emit('heart', 4);
         sayFrom('love', 2400);
         setTimeout(function(){ setMood('calm'); }, 2600);
-      }else{
+      }else if(roll < 0.25){
+        // 只冒泡泡，不说话
         emit('bubble', 3);
+      }else if(roll < 0.45){
+        // 只冒爱心，不说话
+        emit('heart', 2);
+      }else if(roll < 0.7){
+        // 说句话，不冒东西
         sayFrom('tap', 1800);
+      }else{
+        // 什么都不做，只弹一下
       }
     },
     onDoubleTap: function(){ touch(); setMood('shy'); hop();
@@ -356,6 +429,7 @@
       touch();
       dragging = true;
       clinging = false;
+      clearScene();
       stage.classList.remove('cling-l','cling-r');
       pet.classList.remove('cling','side-l','side-r','flop','yawn');
       pet.classList.add('drag');
@@ -369,6 +443,7 @@
     // side: 'left' | 'right'，Kotlin 侧贴边动画结束后调
     onCling: function(side){
       clinging = true;
+      clearScene();
       var right = (side === 'right');
       pet.classList.remove('drag','flop','yawn');
       pet.classList.add('cling', right ? 'side-r' : 'side-l');
@@ -396,7 +471,11 @@
         var s = (typeof json === 'string') ? JSON.parse(json) : json;
         if(s.mood){
           setMood(s.mood);
-          flop(s.mood === 'sleeping');
+          if(s.mood === 'sleeping'){
+            clearScene(); setScene('sleep'); flop(true);
+          }else{
+            if(currentScene === 'sleep'){ clearScene(); flop(false); }
+          }
         }
         if(typeof s.heat === 'number') setHeat(s.heat);
         if(s.text) say(s.text, s.style, s.ttl_ms || 4000);
@@ -405,8 +484,8 @@
         }
         if(s.action === 'wave') wave();
         if(s.action === 'yawn') yawn();
-        if(s.action === 'sleep') flop(true);
-        if(s.action === 'wake' || s.action === 'hop'){ flop(false); hop(); }
+        if(s.action === 'sleep'){ clearScene(); setScene('sleep'); flop(true); }
+        if(s.action === 'wake' || s.action === 'hop'){ clearScene(); flop(false); hop(); }
       }catch(e){ /* 状态坏了就跳过这一轮 */ }
     }
   };
