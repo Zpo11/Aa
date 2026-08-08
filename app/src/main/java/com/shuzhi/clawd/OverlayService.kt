@@ -44,6 +44,8 @@ class OverlayService : Service() {
         /** 离边多近就自动吸上去 */
         private const val SNAP_ZONE_DP = 46
         private const val SETTLE_MS = 320L
+        /** 常驻通知换一句话的间隔 */
+        private const val WHISPER_INTERVAL_MS = 60 * 60 * 1000L
     }
 
     private lateinit var windowManager: WindowManager
@@ -68,14 +70,45 @@ class OverlayService : Service() {
     /** 只听 127.0.0.1 的本地通信服务 */
     private val server = LocalServer()
 
+    // 感知层：采到什么都原样丢给 JS，反应由 pet.html 决定
+    private val sink: SenseSink = { kind, payload -> pushSense(kind, payload) }
+    private val usage by lazy { UsageTracker(this, sink) }
+    private val shots by lazy { ScreenshotWatcher(sink) }
+    private val sysWatch by lazy { SystemWatcher(this, sink) }
+
     override fun onCreate() {
         super.onCreate()
         StateBridge.init(this)
         server.start()
         createChannel()
-        startForeground(NOTIFY_ID, buildNotification("在你桌面上待着"))
+        startForeground(NOTIFY_ID, buildNotification(Whispers.pick()))
         setupOverlay()
         main.postDelayed(pollTask, POLL_INTERVAL_MS)
+        usage.start()
+        shots.start()
+        sysWatch.start()
+        main.postDelayed(whisperTask, WHISPER_INTERVAL_MS)
+    }
+
+    // ---------- 感知信号转发 ----------
+
+    /** 后台线程也可能调，统一切主线程再碰 WebView */
+    private fun pushSense(kind: String, payload: String) {
+        if (!pageReady) return
+        val json = if (payload.isEmpty()) "{}" else "{$payload}"
+        val literal = json.replace("\\", "\\\\").replace("'", "\\'")
+        callJs("window.petEngine && window.petEngine.onSense('$kind','$literal')")
+    }
+
+    /** 常驻通知每小时换一句话 */
+    private val whisperTask = object : Runnable {
+        override fun run() {
+            runCatching {
+                (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                    .notify(NOTIFY_ID, buildNotification(Whispers.pick()))
+            }
+            main.postDelayed(this, WHISPER_INTERVAL_MS)
+        }
     }
 
     // ---------- 悬浮窗 ----------
@@ -350,6 +383,9 @@ class OverlayService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        usage.stop()
+        shots.stop()
+        sysWatch.stop()
         server.stop()
         settleAnim?.cancel()
         settleAnim = null

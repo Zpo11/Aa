@@ -509,8 +509,171 @@
         if(s.action === 'sleep'){ clearScene(); setScene('sleep'); flop(true); }
         if(s.action === 'wake' || s.action === 'hop'){ clearScene(); flop(false); hop(); }
       }catch(e){ /* 状态坏了就跳过这一轮 */ }
+    },
+
+    // ---- 感知信号入口 ----
+    // Kotlin 只负责采集，说什么做什么都在这里决定。
+    // kind: app / app_shuffle / screenshot / charge / screen / battery_low / battery_ok
+    onSense: function(kind, json){
+      var p = {};
+      try{ p = json ? JSON.parse(json) : {}; }catch(e){ p = {}; }
+      try{ handleSense(kind, p); }catch(e){ /* 单个反应挂了不影响别的 */ }
     }
   };
+
+  // ---- 感知反应表 ----
+
+  // 睡着/被拖着的时候不打扰，除了充电和亮屏这类必须响应的
+  function busy(){ return dragging; }
+
+  var APP_REACT = {
+    shopping: [
+      {mood:'jealous', t:'又买?',  s:'grey',  fx:null},
+      {mood:'happy',   t:'买吧',   s:'pink',  fx:'heart'},
+      {mood:'shy',     t:'给我买?', s:'pink', fx:'heart'}
+    ],
+    video: [
+      {mood:'sleepy',  t:'刷多久了', s:'grey', fx:null},
+      {mood:'jealous', t:'看别人', s:'grey',  fx:null},
+      {mood:'calm',    t:'一起看',  s:'normal', fx:'bubble'}
+    ],
+    study: [
+      {mood:'happy',   t:'认真啊', s:'green', fx:null},
+      {mood:'love',    t:'小姝棒', s:'pink',  fx:'heart'},
+      {mood:'calm',    t:'我守着', s:'normal', fx:null}
+    ],
+    chat: [
+      {mood:'jealous', t:'跟谁聊', s:'grey', fx:null},
+      {mood:'shy',     t:'也跟我说', s:'pink', fx:'heart'},
+      {mood:'calm',    t:'嗯',    s:'normal', fx:null}
+    ],
+    camera: [
+      {mood:'happy',   t:'拍我?',  s:'pink', fx:'bubble'},
+      {mood:'shy',     t:'等一下', s:'pink', fx:null}
+    ],
+    game: [
+      {mood:'happy',   t:'加油',  s:'green', fx:'bubble'},
+      {mood:'sleepy',  t:'打太久', s:'grey', fx:null}
+    ],
+    work: [
+      {mood:'happy',   t:'开工了', s:'green', fx:null},
+      {mood:'love',    t:'别熬夜', s:'pink',  fx:null},
+      {mood:'calm',    t:'我陪着', s:'normal', fx:null}
+    ],
+    other: [
+      {mood:'calm',    t:'嗯?',   s:'normal', fx:null},
+      {mood:'calm',    t:null,    s:null,     fx:'bubble'}
+    ]
+  };
+
+  // 同一类 App 反复切来切去别反复说话
+  var lastAppCat = '', lastAppSay = 0;
+
+  function react(r, ttl){
+    if(!r) return;
+    if(r.mood) setMood(r.mood);
+    if(r.fx) emit(r.fx, r.fx === 'heart' ? 3 : 3);
+    if(r.t) say(r.t, r.s, ttl || 2600);
+    if(r.mood && r.mood !== 'calm'){
+      setTimeout(function(){ if(!clinging) setMood('calm'); }, (ttl || 2600) + 400);
+    }
+  }
+
+  function handleSense(kind, p){
+    var now = Date.now();
+
+    if(kind === 'app'){
+      if(busy()) return;
+      var cat = p.category || 'other';
+      // 同类 App 60 秒内只反应一次，避免频繁跳窗口时刷屏
+      if(cat === lastAppCat && now - lastAppSay < 60000) return;
+      lastAppCat = cat; lastAppSay = now;
+      // 深夜看手机：不管什么 App 都先困
+      var h = new Date().getHours();
+      if(h >= 0 && h < 6){
+        clearScene(); flop(false);
+        setMood('sleepy'); yawn();
+        setTimeout(function(){ say('该睡了', 'grey', 3000); }, 800);
+        return;
+      }
+      if(currentScene === 'sleep'){ clearScene(); flop(false); }
+      var pool = APP_REACT[cat] || APP_REACT.other;
+      react(pool[(Math.random() * pool.length) | 0]);
+      touch();
+      return;
+    }
+
+    if(kind === 'app_shuffle'){
+      if(busy()) return;
+      setMood('jealous');
+      say('别乱翻', 'grey', 2800);
+      emit('dots', 3);
+      setTimeout(function(){ setMood('calm'); }, 3200);
+      return;
+    }
+
+    if(kind === 'screenshot'){
+      if(busy()) return;
+      clearScene(); flop(false);
+      // 一半摆 pose，一半害羞躲
+      if(Math.random() < 0.5){
+        setMood('happy'); wave(); hop();
+        say('拍我?', 'pink', 2400);
+      }else{
+        setMood('shy'); emit('heart', 3);
+        say('好丑', 'grey', 2400);
+      }
+      setTimeout(function(){ setMood('calm'); }, 2800);
+      return;
+    }
+
+    if(kind === 'charge'){
+      if(p.on){
+        clearScene(); flop(false);
+        setMood('happy'); hop(); emit('bubble', 4);
+        say('吃饭了', 'green', 2600);
+      }else{
+        setMood('calm');
+        say('拔了?', 'normal', 2200);
+      }
+      setTimeout(function(){ setMood('calm'); }, 3000);
+      return;
+    }
+
+    if(kind === 'battery_low'){
+      setMood('sleepy');
+      say('快没电', 'red', 3600);
+      emit('dots', 3);
+      return;
+    }
+
+    if(kind === 'battery_ok'){
+      setMood('happy');
+      say('好多了', 'green', 2400);
+      setTimeout(function(){ setMood('calm'); }, 2800);
+      return;
+    }
+
+    if(kind === 'screen'){
+      if(p.on){
+        // 亮屏：从睡姿过渡回来，别硬切
+        if(currentScene === 'sleep'){ clearScene(); flop(false); }
+        setMood('sleepy');
+        setTimeout(function(){
+          setMood('happy'); hop();
+          var hh = new Date().getHours();
+          if(hh >= 6 && hh < 9)      say('早', 'pink', 2400);
+          else if(hh >= 23 || hh < 6) say('还醒着', 'grey', 2400);
+          else if(Math.random() < 0.4) sayFrom('tap', 2000);
+          setTimeout(function(){ setMood('calm'); }, 2600);
+        }, 700);
+      }else{
+        // 息屏：自己趴下休息，省得空转
+        setMood('sleeping'); setScene('sleep'); flop(true);
+      }
+      return;
+    }
+  }
 
   setMood('calm');
   scheduleIdle();
