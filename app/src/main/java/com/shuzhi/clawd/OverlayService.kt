@@ -36,7 +36,7 @@ class OverlayService : Service() {
         private const val LONG_PRESS_MS = 600L
         private const val POLL_INTERVAL_MS = 2000L
         /** 挂在边缘时留在屏内的宽度 */
-        private const val PEEK_VISIBLE_DP = 34
+        private const val PEEK_VISIBLE_DP = 54
         /** 离边多近就自动吸上去 */
         private const val SNAP_ZONE_DP = 46
         private const val SETTLE_MS = 320L

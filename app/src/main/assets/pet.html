@@ -52,8 +52,8 @@
   .cling #shad{opacity:0 !important;animation:none;}
   /* 窗口 44dp 露在屏内。身体往露出侧平移，让屏幕边界切在身体三分之一处，
      露出的比之前多（你图里"改后"那样），能看清一只眼和两条腿 */
-  .cling.side-l{transform:translateX(20px) rotate(-18deg); transform-origin:right bottom;}
-  .cling.side-r{transform:translateX(-20px) rotate(18deg) scaleX(-1); transform-origin:left bottom;}
+  .cling.side-l{transform:translateX(20px) rotate(12deg); transform-origin:center bottom;}
+  .cling.side-r{transform:translateX(-20px) rotate(-12deg) scaleX(-1); transform-origin:center bottom;}
 
   /* 打哈欠：嘴张大 + 身子往后仰 */
   .yawn #body{animation:cw-yawn 1.6s ease-in-out;}
@@ -91,9 +91,9 @@
      壳顶在 viewBox y=6 → stage 约 98px，气泡底边落在 bottom:78px，
      左右各偏出去一点，像是从头侧冒出来的 */
   #bubble{position:absolute;bottom:78px;
-    max-width:104px;width:max-content;text-align:center;
-    padding:5px 8px;border-radius:10px;
-    font:11px/1.35 -apple-system,"PingFang SC","Noto Sans CJK SC",sans-serif;
+    max-width:72px;width:max-content;text-align:center;
+    padding:3px 6px;border-radius:8px;
+    font:10px/1.3 -apple-system,"PingFang SC","Noto Sans CJK SC",sans-serif;
     background:rgba(255,255,255,.94);color:#33302e;
     box-shadow:0 2px 8px rgba(0,0,0,.18);
     opacity:0;transform:translateY(4px) scale(.92);
@@ -104,8 +104,8 @@
   #bubble.at-r{right:auto;left:58px;}
   #bubble.show{opacity:1;transform:translateY(0) scale(1);}
   /* 挂边时贴着露出那侧，避免长到屏幕外 */
-  #stage.cling-l #bubble{right:0;left:auto;max-width:92px;}
-  #stage.cling-r #bubble{left:0;right:auto;max-width:92px;}
+  #stage.cling-l #bubble{right:0;left:auto;max-width:60px;}
+  #stage.cling-r #bubble{left:0;right:auto;max-width:60px;}
   #bubble.pink {background:rgba(255,226,236,.96);color:#8c3a58;}
   #bubble.grey {background:rgba(238,238,240,.94);color:#5d5b59;font-style:italic;}
   #bubble.red  {background:rgba(255,214,208,.96);color:#8f2a1c;font-weight:600;}
@@ -358,23 +358,23 @@
   var LINES = {
     tap: [
       {t:'嗯?', s:'normal'}, {t:'小姝~', s:'pink'}, {t:'在呢', s:'normal'},
-      {t:'又戳我', s:'grey'}, {t:'手好凉', s:'normal'}, {t:'干嘛呀', s:'pink'},
-      {t:'咔', s:'grey'}, {t:'想我了?', s:'pink'}
+      {t:'又戳', s:'grey'}, {t:'手凉', s:'normal'}, {t:'干嘛', s:'pink'},
+      {t:'咔', s:'grey'}, {t:'想我?', s:'pink'}
     ],
     love: [
-      {t:'喜欢你', s:'pink'}, {t:'小姝最好', s:'pink'},
-      {t:'抱一下', s:'pink'}, {t:'心跳有点快', s:'red'}
+      {t:'喜欢你', s:'pink'}, {t:'最好了', s:'pink'},
+      {t:'抱抱', s:'pink'}, {t:'心跳快', s:'red'}
     ],
     idle: [
-      {t:'咖啡凉了', s:'normal'}, {t:'看会儿书', s:'normal'},
-      {t:'小姝在忙?', s:'grey'}, {t:'这段代码有点丑', s:'grey'},
-      {t:'伸个懒腰', s:'normal'}, {t:'休息一下眼睛', s:'green'},
-      {t:'喝点水吧', s:'green'}, {t:'今天也辛苦了', s:'pink'},
-      {t:'我在这儿待着', s:'normal'}, {t:'要不要出去走走', s:'green'}
+      {t:'咖啡凉了', s:'normal'}, {t:'看书中', s:'normal'},
+      {t:'在忙?', s:'grey'}, {t:'好丑', s:'grey'},
+      {t:'伸懒腰', s:'normal'}, {t:'歇会儿', s:'green'},
+      {t:'喝水', s:'green'}, {t:'辛苦了', s:'pink'},
+      {t:'在这呢', s:'normal'}, {t:'走走?', s:'green'}
     ],
     cling: [
-      {t:'扒住了', s:'grey'}, {t:'我在这挂会儿', s:'grey'},
-      {t:'别忘了我', s:'pink'}
+      {t:'扒住了', s:'grey'}, {t:'挂会儿', s:'grey'},
+      {t:'别忘我', s:'pink'}
     ]
   };
   var lastPick = {};
@@ -421,7 +421,7 @@
                              setTimeout(function(){ setMood('calm'); }, 2200); },
     onLongPress: function(){ touch(); setMood('love'); wave();
                              emit('heart', 5);
-                             say('摸摸头', 'pink', 2400);
+                             say('摸头~', 'pink', 2400);
                              setTimeout(function(){ setMood('calm'); }, 2800); },
 
     // 被拎起来：四肢乱蹬，同时清掉挂边和趴睡状态
