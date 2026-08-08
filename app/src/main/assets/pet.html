@@ -52,8 +52,9 @@
   .cling #shad{opacity:0 !important;animation:none;}
   /* 窗口 44dp 露在屏内。身体往露出侧平移，让屏幕边界切在身体三分之一处，
      露出的比之前多（你图里"改后"那样），能看清一只眼和两条腿 */
-  .cling.side-l{transform:translateX(20px) rotate(12deg); transform-origin:center bottom;}
-  .cling.side-r{transform:translateX(-20px) rotate(-12deg) scaleX(-1); transform-origin:center bottom;}
+  /* 位移全部交给 Kotlin 窗口坐标，CSS 只负责倾斜姿态，否则两边互相抵消 */
+  .cling.side-l{transform:rotate(14deg); transform-origin:center bottom;}
+  .cling.side-r{transform:rotate(-14deg) scaleX(-1); transform-origin:center bottom;}
 
   /* 打哈欠：嘴张大 + 身子往后仰 */
   .yawn #body{animation:cw-yawn 1.6s ease-in-out;}

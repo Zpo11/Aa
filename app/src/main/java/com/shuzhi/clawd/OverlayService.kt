@@ -35,8 +35,12 @@ class OverlayService : Service() {
         private const val DOUBLE_TAP_MS = 300L
         private const val LONG_PRESS_MS = 600L
         private const val POLL_INTERVAL_MS = 2000L
-        /** 挂在边缘时留在屏内的宽度 */
-        private const val PEEK_VISIBLE_DP = 54
+        /**
+         * 挂边时留在屏内的窗口宽度。
+         * SVG 身体只占窗口中段（约 x=40..80px，宽 40px），
+         * 所以要露出「半个身体」，窗口得留到身体中线：40 + 20 = 60px 左右。
+         */
+        private const val PEEK_VISIBLE_DP = 78
         /** 离边多近就自动吸上去 */
         private const val SNAP_ZONE_DP = 46
         private const val SETTLE_MS = 320L
