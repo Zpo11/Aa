@@ -35,6 +35,11 @@ class OverlayService : Service() {
         private const val DOUBLE_TAP_MS = 300L
         private const val LONG_PRESS_MS = 600L
         private const val POLL_INTERVAL_MS = 2000L
+        /** 挂在边缘时留在屏内的宽度 */
+        private const val PEEK_VISIBLE_DP = 34
+        /** 离边多近就自动吸上去 */
+        private const val SNAP_ZONE_DP = 46
+        private const val SETTLE_MS = 320L
     }
 
     private lateinit var windowManager: WindowManager
@@ -51,6 +56,9 @@ class OverlayService : Service() {
     private var touchRawY = 0f
     private var downTime = 0L
     private var moved = false
+    private var dragging = false
+    private var clinging = false
+    private var settleAnim: android.animation.ValueAnimator? = null
     private var pendingTap: Runnable? = null
 
     /** 只听 127.0.0.1 的本地通信服务 */
@@ -130,6 +138,11 @@ class OverlayService : Service() {
                     cancelPendingTap()
                 }
                 if (moved) {
+                    if (!dragging) {
+                        dragging = true
+                        // 被拎起来了：手脚乱蹬
+                        callJs("window.petEngine && window.petEngine.onDragStart()")
+                    }
                     // 用 rawX/rawY 的位移，不用相对坐标，否则拖动会跳
                     params.x = initialX + dx.toInt()
                     params.y = initialY + dy.toInt()
@@ -142,10 +155,13 @@ class OverlayService : Service() {
                 val elapsed = System.currentTimeMillis() - downTime
                 when {
                     moved -> {
+                        dragging = false
+                        callJs("window.petEngine && window.petEngine.onDragEnd()")
                         StateBridge.appendEvent(
                             "drag",
                             mapOf("x" to params.x, "y" to params.y)
                         )
+                        settleToEdge()
                     }
 
                     elapsed > LONG_PRESS_MS -> {
@@ -182,11 +198,89 @@ class OverlayService : Service() {
         }
         return false
     }
-
     private fun cancelPendingTap() {
         pendingTap?.let { main.removeCallbacks(it) }
         pendingTap = null
     }
+
+    // ---------- 贴边 ----------
+
+    /**
+     * 松手后决定去哪。
+     * 规则：
+     *  1. 身体中心越过屏幕左/右边界，或者被推出屏外 —— 挂上那条边，只露 PEEK_VISIBLE_DP。
+     *  2. 否则离最近的竖边在 SNAP_ZONE_DP 内 —— 也吸过去（手抖时不用拖到底）。
+     *  3. 都不满足 —— 只把它拉回屏内，保持自由站立。
+     * 垂直方向永远只做夹取，不吸顶也不吸底，避免挡状态栏和手势条。
+     */
+    private fun settleToEdge() {
+        val w = dpToPx(PET_SIZE_DP)
+        val h = dpToPx(PET_HEIGHT_DP)
+        val screen = resources.displayMetrics
+        val sw = screen.widthPixels
+        val sh = screen.heightPixels
+
+        val peek = dpToPx(PEEK_VISIBLE_DP)
+        val snapZone = dpToPx(SNAP_ZONE_DP)
+
+        val centerX = params.x + w / 2
+        val distLeft = centerX
+        val distRight = sw - centerX
+
+        // 挂边后 x 的落点：大部分身子藏到屏外，只留 peek 宽度
+        val hangLeftX = peek - w
+        val hangRightX = sw - peek
+
+        var targetX = params.x
+        var side = ""
+
+        when {
+            params.x < 0 || distLeft < snapZone -> { targetX = hangLeftX; side = "left" }
+            params.x + w > sw || distRight < snapZone -> { targetX = hangRightX; side = "right" }
+            else -> targetX = params.x.coerceIn(0, sw - w)
+        }
+
+        // 垂直只夹取：上留状态栏，下留手势条
+        val topLimit = dpToPx(24)
+        val bottomLimit = sh - h - dpToPx(48)
+        val targetY = params.y.coerceIn(topLimit, maxOf(topLimit, bottomLimit))
+
+        clinging = side.isNotEmpty()
+        if (clinging) {
+            // 挂左边时它得朝右看（身子在屏外，脸冲屏内），所以传的是"扒着哪边"
+            callJs("window.petEngine && window.petEngine.onCling('$side')")
+            StateBridge.appendEvent("cling", mapOf("side" to side))
+        } else {
+            callJs("window.petEngine && window.petEngine.onRelease()")
+        }
+
+        animateTo(targetX, targetY)
+    }
+
+    /** 弹性滑到目标位，比直接跳过去自然 */
+    private fun animateTo(tx: Int, ty: Int) {
+        settleAnim?.cancel()
+        val fromX = params.x
+        val fromY = params.y
+        if (fromX == tx && fromY == ty) return
+
+        val anim = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = SETTLE_MS
+            interpolator = android.view.animation.DecelerateInterpolator(1.8f)
+            addUpdateListener { a ->
+                val t = a.animatedValue as Float
+                params.x = (fromX + (tx - fromX) * t).toInt()
+                params.y = (fromY + (ty - fromY) * t).toInt()
+                webView?.let {
+                    // 动画期间视图可能已经被移除，updateViewLayout 会抛
+                    runCatching { windowManager.updateViewLayout(it, params) }
+                }
+            }
+        }
+        settleAnim = anim
+        anim.start()
+    }
+
 
     // ---------- 状态轮询 ----------
 
@@ -249,6 +343,8 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         server.stop()
+        settleAnim?.cancel()
+        settleAnim = null
         main.removeCallbacksAndMessages(null)
         webView?.let {
             runCatching { windowManager.removeView(it) }

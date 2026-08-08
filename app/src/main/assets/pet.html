@@ -33,6 +33,44 @@
   .wave #rarm{animation:cw-wave .45s ease-in-out 3;}
   @keyframes cw-wave{0%,100%{transform:rotate(0)}50%{transform:rotate(-38deg)}}
 
+  /* 被拎起来：整体晃 + 四肢乱蹬。学 clawd-on-desk 的行为，画法自己写 */
+  .drag{animation:cw-dangle .42s infinite ease-in-out;}
+  @keyframes cw-dangle{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(5deg)}}
+  .drag #larm{animation:cw-flail-l .22s infinite ease-in-out;}
+  .drag #rarm{animation:cw-flail-r .19s infinite ease-in-out;}
+  @keyframes cw-flail-l{0%,100%{transform:rotate(22deg)}50%{transform:rotate(-30deg)}}
+  @keyframes cw-flail-r{0%,100%{transform:rotate(-26deg)}50%{transform:rotate(24deg)}}
+  /* 腿也蹬，四条一起，错开一点相位 */
+  .drag #legs{animation:cw-kick .17s infinite ease-in-out;}
+  @keyframes cw-kick{0%,100%{transform:translateX(-.5px)}50%{transform:translateX(.5px)}}
+
+  /* 挂在屏幕边缘：身子歪着扒住，只探个头 */
+  .cling{animation:none;}
+  .cling #body{animation:cw-cling-sway 3.4s infinite ease-in-out;}
+  @keyframes cw-cling-sway{0%,100%{transform:rotate(0) translateY(0)}50%{transform:rotate(2.5deg) translateY(.5px)}}
+  /* 挂着的时候影子没有落点，藏掉 */
+  .cling #shad{opacity:0 !important;animation:none;}
+  /* 窗口只有 34dp 露在屏内，身体默认在窗口正中会被整块切掉，
+     所以往露出那侧平移，让屏幕边界正好切在身体中线上 —— 探头效果 */
+  .cling.side-l{transform:translateX(26px);}
+  .cling.side-r{transform:translateX(-26px) scaleX(-1);}
+
+  /* 打哈欠：嘴张大 + 身子往后仰 */
+  .yawn #body{animation:cw-yawn 1.6s ease-in-out;}
+  @keyframes cw-yawn{
+    0%,100%{transform:translateY(0) rotate(0)}
+    35%{transform:translateY(-1px) rotate(-3deg)}
+    70%{transform:translateY(.3px) rotate(1deg)}
+  }
+
+  /* 趴下睡：整体压扁下沉 */
+  .flop #body{animation:cw-flop .9s ease-out forwards;}
+  @keyframes cw-flop{
+    0%{transform:translateY(0) scaleY(1)}
+    100%{transform:translateY(2px) scaleY(.82) scaleX(1.08)}
+  }
+  .flop #shad{transform:scaleX(1.15);}
+
   svg{shape-rendering:crispEdges;}
 
   /* 气泡贴着头顶：螃蟹壳顶在 viewBox y=6，换算到 stage 约 98px 处，
@@ -46,6 +84,9 @@
     opacity:0;transition:opacity .22s;pointer-events:none;
     word-break:break-word;}
   #bubble.show{opacity:1;}
+  /* 挂边时气泡不能居中，会长到屏幕外去，改成贴着露出那侧 */
+  #stage.cling-l #bubble{left:auto;right:0;transform:none;max-width:96px;}
+  #stage.cling-r #bubble{left:0;right:auto;transform:none;max-width:96px;}
   #bubble.pink {background:rgba(255,226,236,.96);color:#8c3a58;}
   #bubble.grey {background:rgba(238,238,240,.94);color:#5d5b59;font-style:italic;}
   #bubble.red  {background:rgba(255,214,208,.96);color:#8f2a1c;font-weight:600;}
@@ -67,7 +108,7 @@
       <rect id="shad" x="3" y="15" width="9" height="1" fill="#000" opacity=".5"/>
       <g id="body">
         <!-- 脚在 body 组内，跟着一起动才不会脱开 -->
-        <g fill="#DE886D">
+        <g id="legs" fill="#DE886D">
           <rect x="3"  y="13" width="1" height="2"/><rect x="5"  y="13" width="1" height="2"/>
           <rect x="9"  y="13" width="1" height="2"/><rect x="11" y="13" width="1" height="2"/>
         </g>
@@ -103,6 +144,7 @@
 <script>
 (function(){
   var pet    = document.getElementById('pet');
+  var stage  = document.getElementById('stage');
   var eyes   = document.getElementById('eyes');
   var pupL   = document.getElementById('pupL');
   var pupR   = document.getElementById('pupR');
@@ -112,6 +154,8 @@
   var bubble = document.getElementById('bubble');
   var heat   = document.getElementById('heat');
   var bubbleTimer = null;
+  var dragging = false;
+  var clinging = false;
 
   // 表情表：坐标对齐 anatomy 的 landmark
   // 嘴基准 6.4,10.8,2.2x1；眼基准 y=8
@@ -172,29 +216,94 @@
     setTimeout(function(){ pet.classList.remove('wave'); }, 1400);
   }
 
+  function yawn(){
+    if(clinging) return;
+    pet.classList.remove('yawn');
+    void pet.offsetWidth;
+    pet.classList.add('yawn');
+    setTimeout(function(){ pet.classList.remove('yawn'); }, 1700);
+  }
+
+  function flop(on){
+    if(on) pet.classList.add('flop');
+    else   pet.classList.remove('flop');
+  }
+
+  // 空闲久了自己打个哈欠，随机间隔避免看着像定时器
+  var idleTimer = null;
+  function scheduleIdle(){
+    if(idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(function(){
+      if(!dragging && !clinging) yawn();
+      scheduleIdle();
+    }, 40000 + Math.random() * 50000);
+  }
+
+  function touch(){ scheduleIdle(); }
+
   window.petEngine = {
-    onTap:       function(){ hop();  say('嗯?', 'normal', 1600); },
-    onDoubleTap: function(){ setMood('shy'); hop();
+    onTap:       function(){ touch(); hop();  say('嗯?', 'normal', 1600); },
+    onDoubleTap: function(){ touch(); setMood('shy'); hop();
                              say('别戳了', 'pink', 1800);
                              setTimeout(function(){ setMood('calm'); }, 2200); },
-    onLongPress: function(){ setMood('happy'); wave();
+    onLongPress: function(){ touch(); setMood('happy'); wave();
                              say('...', 'grey', 2000); },
+
+    // 被拎起来：四肢乱蹬，同时清掉挂边和趴睡状态
+    onDragStart: function(){
+      touch();
+      dragging = true;
+      clinging = false;
+      stage.classList.remove('cling-l','cling-r');
+      pet.classList.remove('cling','side-l','side-r','flop','yawn');
+      pet.classList.add('drag');
+      setMood('jealous');
+    },
+    onDragEnd: function(){
+      dragging = false;
+      pet.classList.remove('drag');
+      setMood('calm');
+    },
+    // side: 'left' | 'right'，Kotlin 侧贴边动画结束后调
+    onCling: function(side){
+      clinging = true;
+      var right = (side === 'right');
+      pet.classList.remove('drag','flop','yawn');
+      pet.classList.add('cling', right ? 'side-r' : 'side-l');
+      pet.classList.remove(right ? 'side-l' : 'side-r');
+      stage.classList.remove('cling-l','cling-r');
+      stage.classList.add(right ? 'cling-r' : 'cling-l');
+      setMood('sleepy');
+    },
+    onRelease: function(){
+      clinging = false;
+      stage.classList.remove('cling-l','cling-r');
+      pet.classList.remove('cling','side-l','side-r');
+      setMood('calm');
+    },
+
     applyState: function(json){
       try{
         var s = (typeof json === 'string') ? JSON.parse(json) : json;
-        if(s.mood) setMood(s.mood);
+        if(s.mood){
+          setMood(s.mood);
+          flop(s.mood === 'sleeping');
+        }
         if(typeof s.heat === 'number') setHeat(s.heat);
         if(s.text) say(s.text, s.style, s.ttl_ms || 4000);
         if(s.bubble && s.bubble.text){
           say(s.bubble.text, s.bubble.style, s.bubble.ttl_ms);
         }
         if(s.action === 'wave') wave();
-        if(s.action === 'wake' || s.action === 'hop') hop();
+        if(s.action === 'yawn') yawn();
+        if(s.action === 'sleep') flop(true);
+        if(s.action === 'wake' || s.action === 'hop'){ flop(false); hop(); }
       }catch(e){ /* 状态坏了就跳过这一轮 */ }
     }
   };
 
   setMood('calm');
+  scheduleIdle();
 })();
 </script>
 </body>
