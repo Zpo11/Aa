@@ -307,12 +307,32 @@
     setScene('');
   }
 
+  // ---- 夜间自动睡觉 ----
+  var nightTimer = null;
+  function checkNight(){
+    var h = new Date().getHours();
+    // 23:00-6:00 自动进入睡觉状态
+    if(h >= 23 || h < 6){
+      if(currentScene !== 'sleep' && !clinging && !dragging){
+        setMood('sleeping');
+        setScene('sleep');
+        flop(true);
+      }
+    }else{
+      if(currentScene === 'sleep'){
+        clearScene(); flop(false); setMood('calm');
+      }
+    }
+    nightTimer = setTimeout(checkNight, 60000 * 5); // 每5分钟检查一次
+  }
+  checkNight();
+
   // 空闲久了自己打个哈欠，随机间隔避免看着像定时器
   var idleTimer = null;
   function scheduleIdle(){
     if(idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(function(){
-      if(!dragging && !clinging){
+      if(!dragging && !clinging && currentScene !== 'sleep'){
         var r = Math.random();
         if(r < 0.3 && !currentScene){
           // 30% 概率进入一个场景姿态
@@ -335,7 +355,7 @@
   // ---- 点一下冒的小东西 ----
   var fx = document.getElementById('fx');
   function emit(kind, n){
-    var glyphs = (kind === 'heart') ? ['♥','♡','♥'] : ['○','◦','°','○'];
+    var glyphs = (kind === 'heart') ? ['♥','♡','♥'] : (kind === 'dots') ? ['·','·','·'] : ['○','◦','°','○'];
     n = n || 3;
     for(var i = 0; i < n; i++){
       (function(i){
@@ -343,7 +363,7 @@
           var el = document.createElement('span');
           el.className = 'fx-item' + (kind === 'heart' ? '' : ' b');
           el.textContent = glyphs[(Math.random() * glyphs.length) | 0];
-          el.style.color = (kind === 'heart') ? '#ff6b81' : 'rgba(255,255,255,.9)';
+          el.style.color = (kind === 'heart') ? '#ff6b81' : (kind === 'dots') ? '#999' : 'rgba(255,255,255,.9)';
           var dx0 = (Math.random() * 16 - 8);
           el.style.setProperty('--dx0', dx0.toFixed(1) + 'px');
           el.style.setProperty('--dx1', (dx0 + Math.random() * 22 - 11).toFixed(1) + 'px');
@@ -397,8 +417,8 @@
       tapCount++;
       // 随机反应：不是每次都说话
       var roll = Math.random();
-      if(tapCount % 5 === 0){
-        // 每5下给一个大反应：爱心+台词
+      if(tapCount % 3 === 0){
+        // 每3下给一个大反应：爱心+台词
         setMood('love'); emit('heart', 4);
         sayFrom('love', 2400);
         setTimeout(function(){ setMood('calm'); }, 2600);
@@ -484,6 +504,7 @@
         }
         if(s.action === 'wave') wave();
         if(s.action === 'yawn') yawn();
+        if(s.action === 'think') emit('dots', 3);
         if(s.action === 'sleep'){ clearScene(); setScene('sleep'); flop(true); }
         if(s.action === 'wake' || s.action === 'hop'){ clearScene(); flop(false); hop(); }
       }catch(e){ /* 状态坏了就跳过这一轮 */ }
